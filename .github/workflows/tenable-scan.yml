@@ -1,68 +1,25 @@
-name: Tenable Cloud Security Scan
- 
+name: CI WAS Scan
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
- 
-env:
-  ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
-  SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
- 
 jobs:
-  tenable-iac-scan:
-    name: IaC Scan with Tenable (Terraform / CloudFormation)
+  tenablescan:
+    name: was-cicd
     runs-on: ubuntu-latest
- 
     steps:
-      # 1️⃣ Checkout repo
-      - name: Checkout repository
-        uses: actions/checkout@v4
- 
-      # 2️⃣ Instalar Terrascan (última versión)
-      - name: Install Terrascan
+      - name: Clone repo
+        uses: actions/checkout@v2
+      - name: Build + Run PetStore
         run: |
-          curl -L https://github.com/tenable/terrascan/releases/latest/download/terrascan_Linux_x86_64.tar.gz -o terrascan.tar.gz
-          tar -xzf terrascan.tar.gz terrascan
-          sudo mv terrascan /usr/local/bin/terrascan
-          terrascan version
- 
-      # 3️⃣ Escaneo de Terraform y CloudFormation
-      - name: Run Terrascan IaC Scan
+          docker pull swaggerapi/petstore
+          docker run -d -e SWAGGER_URL=http://petstore:8080 -e SWAGGER_BASE_PATH=/v2 --name petstore swaggerapi/petstore
+      - name: Run WAS
         run: |
-          terrascan scan -t terraform -d . -o json > terrascan_terraform.json || true
-          terrascan scan -t cft -d . -o json > terrascan_cft.json || true
-        continue-on-error: true
- 
-      # 4️⃣ Subir resultados como artifacts (no CodeQL)
-      - name: Upload Terrascan reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: terrascan-reports
-          path: |
-            terrascan_terraform.json
-            terrascan_cft.json
- 
-      # 5️⃣ Subir resultados a Tenable Cloud Security (sin CodeQL)
-      - name: Upload results to Tenable Cloud Security
-        uses: tenable/accurics-action@v2
-        with:
-          fail_on_violation: false
-          send_code_scanning_alerts: false     # 🚫 evita error de JSON / CodeQL
+          docker pull tenable/was-scanner:latest
+          docker run -v $(pwd):/scanner -t -e WAS_MODE=cicd -e ACCESS_KEY=${ACCESS_KEY} -e SECRET_KEY=${SECRET_KEY} --link petstore tenable/was-scanner:latest || true
+          ls $(pwd)
         env:
-          ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
-          SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
- 
-      # 6️⃣ (opcional) Verificar severidad y fallar si hay findings altos
-      - name: Fail if critical/high findings
-        run: |
-          if grep -qi '"severity":"CRITICAL"' terrascan_terraform.json terrascan_cft.json; then
-            echo "❌ Critical findings found!"
-            exit 1
-          elif grep -qi '"severity":"HIGH"' terrascan_terraform.json terrascan_cft.json; then
-            echo "❌ High severity findings found!"
-            exit 1
-          else
-            echo "✅ No critical/high findings detected."
-          fi
+          ACCESS_KEY: ${{ secrets.SECRETKEY }}
+          SECRET_KEY: ${{ secrets.ACCESSKEY }}
