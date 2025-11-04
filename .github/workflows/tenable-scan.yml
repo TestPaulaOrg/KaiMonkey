@@ -6,8 +6,8 @@ on:
     branches: [ main ]
  
 env:
-  TENABLE_ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
-  TENABLE_SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
+  TENABLE_ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
+  TENABLE_SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
  
 jobs:
   tenable-scan:
@@ -19,14 +19,14 @@ jobs:
       # -----------------------
       # IaC scan (Accurics / Tenable Cloud Security)
       # -----------------------
-      - name: IaC scan (Accurics action)
+      - name: IaC Scan with Tenable Cloud Security
         uses: tenable/accurics-action@v1
         with:
-          # El action toma por defecto el path del repo, revisa la doc si quieres flags extra
           fail_on_violation: true
+          minimum_severity: CRITICAL
         env:
-          ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
-          SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
+          TENABLE_ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
+          TENABLE_SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
  
       # -----------------------
       # Container image scan (ejemplo usando el CLI 'consec')
@@ -47,8 +47,8 @@ jobs:
             --pipeline-name "${{ github.repository }}-${{ github.sha }}" \
             || true
         env:
-          ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
-          SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
+          ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
+          SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
  
       # -----------------------
       # Web App Scanning (WAS) - OPCIONAL: lanza un scan configurado en Tenable WAS
@@ -60,8 +60,8 @@ jobs:
           folder_name: "NombreDeCarpetaEnTenable"  # ajustar
           wait_for_results: true
         env:
-          ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
-          SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
+          TENABLE_ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
+          TENABLE_SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
  
       # -----------------------
       # Guardar reportes como artifacts (opcional)
