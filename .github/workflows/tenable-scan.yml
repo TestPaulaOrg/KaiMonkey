@@ -20,7 +20,7 @@ jobs:
       # IaC scan (Accurics / Tenable Cloud Security)
       # -----------------------
       - name: IaC Scan with Tenable Cloud Security
-        uses: tenable/accurics-action@v1
+        uses: tenable/accurics-action@v2
         with:
           fail_on_violation: true
           minimum_severity: CRITICAL
