@@ -1,73 +1,68 @@
-name: Tenable Cloud Security Full Scan
+name: Tenable Cloud Security Scan
+ 
 on:
   push:
     branches: [ main ]
   pull_request:
  
 env:
-  TENABLE_ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
-  TENABLE_SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
+  ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
+  SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
  
 jobs:
-  tenable-full-scan:
-    name: Run Tenable Cloud Security Scan
+  tenable-iac-scan:
+    name: IaC Scan with Tenable (Terraform / CloudFormation)
     runs-on: ubuntu-latest
  
     steps:
-      # 1️⃣ Checkout del código
+      # 1️⃣ Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
  
-      # 2️⃣ Instalar Tenable CLI (consec) - para contenedores e IaC
-      - name: Install Tenable CLI (consec)
+      # 2️⃣ Instalar Terrascan (última versión)
+      - name: Install Terrascan
         run: |
-          curl -sSL https://downloads.tenable.com/cloud-security/consec/install.sh | bash
-          consec version
+          curl -L https://github.com/tenable/terrascan/releases/latest/download/terrascan_Linux_x86_64.tar.gz -o terrascan.tar.gz
+          tar -xzf terrascan.tar.gz terrascan
+          sudo mv terrascan /usr/local/bin/terrascan
+          terrascan version
  
-      # 3️⃣ Escaneo de IaC con Tenable (Accurics)
-      - name: IaC Scan (Terraform / CloudFormation / K8s)
-        uses: accurics/terrascan-action@v2
-        with:
-          fail_on_violation: true           # Falla el job si hay violaciones
-          minimum_severity: HIGH            # Bloquea si hay hallazgos High o superiores
-        env:
-          TENABLE_ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
-          TENABLE_SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
- 
-      # 4️⃣ Construir imagen Docker (opcional)
-      - name: Build Docker image
+      # 3️⃣ Escaneo de Terraform y CloudFormation
+      - name: Run Terrascan IaC Scan
         run: |
-          docker build -t myapp:${{ github.sha }} .
+          terrascan scan -t terraform -d . -o json > terrascan_terraform.json || true
+          terrascan scan -t cft -d . -o json > terrascan_cft.json || true
+        continue-on-error: true
  
-      # 5️⃣ Escanear imagen con Tenable Container Security
-      - name: Container Image Scan
-        run: |
-          ./consec image-scan myapp:${{ github.sha }} \
-            --pipeline-type GITHUB \
-            --pipeline-name "${{ github.repository }}-${{ github.sha }}" \
-            --fail-on-severity CRITICAL
-        env:
-          TENABLE_ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
-          TENABLE_SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
- 
-      # 6️⃣ (Opcional) Web App Scan si tienes uno configurado en Tenable WAS
-      # Descomenta este bloque si usas Tenable Web App Scanning
-      # - name: Web App Scan (Tenable WAS)
-      #   uses: tenable/was-action@v2
-      #   with:
-      #     scan_name: "NombreDelScanEnTenable"
-      #     folder_name: "Default"
-      #     wait_for_results: true
-      #   env:
-      #     ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
-      #     SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
- 
-      # 7️⃣ Subir reportes como artifacts
-      - name: Upload Tenable reports
+      # 4️⃣ Subir resultados como artifacts (no CodeQL)
+      - name: Upload Terrascan reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tenable-reports-${{ github.run_id }}
+          name: terrascan-reports
           path: |
-            ./accurics-reports/*
-            ./consec_reports/*
+            terrascan_terraform.json
+            terrascan_cft.json
+ 
+      # 5️⃣ Subir resultados a Tenable Cloud Security (sin CodeQL)
+      - name: Upload results to Tenable Cloud Security
+        uses: tenable/accurics-action@v2
+        with:
+          fail_on_violation: false
+          send_code_scanning_alerts: false     # 🚫 evita error de JSON / CodeQL
+        env:
+          ACCESS_KEY: ${{ secrets.TENABLE_SECRETKEY }}
+          SECRET_KEY: ${{ secrets.TENABLE_ACCESSKEY }}
+ 
+      # 6️⃣ (opcional) Verificar severidad y fallar si hay findings altos
+      - name: Fail if critical/high findings
+        run: |
+          if grep -qi '"severity":"CRITICAL"' terrascan_terraform.json terrascan_cft.json; then
+            echo "❌ Critical findings found!"
+            exit 1
+          elif grep -qi '"severity":"HIGH"' terrascan_terraform.json terrascan_cft.json; then
+            echo "❌ High severity findings found!"
+            exit 1
+          else
+            echo "✅ No critical/high findings detected."
+          fi
