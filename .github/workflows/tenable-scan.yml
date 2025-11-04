@@ -1,0 +1,76 @@
+name: Tenable Cloud Security scan (IaC + Container + WAS)
+ 
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+ 
+env:
+  TENABLE_ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
+  TENABLE_SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
+ 
+jobs:
+  tenable-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+ 
+      # -----------------------
+      # IaC scan (Accurics / Tenable Cloud Security)
+      # -----------------------
+      - name: IaC scan (Accurics action)
+        uses: tenable/accurics-action@v1
+        with:
+          # El action toma por defecto el path del repo, revisa la doc si quieres flags extra
+          fail_on_violation: true
+        env:
+          ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
+          SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
+ 
+      # -----------------------
+      # Container image scan (ejemplo usando el CLI 'consec')
+      # -----------------------
+      - name: Install Tenable consec CLI
+        run: |
+          # script de instalación: si tu Tenable proporciona otra URL, usa la oficial en tu portal
+          curl -sSL "https://downloads.tenable.com/cloud-security/consec/install.sh" | bash
+ 
+      - name: Build Docker image (opcional)
+        run: |
+          docker build -t ${GITHUB_REPOSITORY}:${{ github.sha }} .
+ 
+      - name: Scan Docker image with consec
+        run: |
+          ./consec image-scan ${GITHUB_REPOSITORY}:${{ github.sha }} \
+            --pipeline-type GITHUB \
+            --pipeline-name "${{ github.repository }}-${{ github.sha }}" \
+            || true
+        env:
+          ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
+          SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
+ 
+      # -----------------------
+      # Web App Scanning (WAS) - OPCIONAL: lanza un scan configurado en Tenable WAS
+      # -----------------------
+      - name: Trigger Tenable WAS scan (opcional)
+        uses: tenable/was-action@v1
+        with:
+          scan_name: "NombreDelScanEnTenable"       # ajustar al nombre que configuraste en Tenable
+          folder_name: "NombreDeCarpetaEnTenable"  # ajustar
+          wait_for_results: true
+        env:
+          ACCESS_KEY: ${{ secrets.TENABLE_ACCESS_KEY }}
+          SECRET_KEY: ${{ secrets.TENABLE_SECRET_KEY }}
+ 
+      # -----------------------
+      # Guardar reportes como artifacts (opcional)
+      # -----------------------
+      - name: Upload Tenable reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tenable-reports-${{ github.sha }}
+          path: |
+            ./consec_reports/*
+            ./was_reports/*
