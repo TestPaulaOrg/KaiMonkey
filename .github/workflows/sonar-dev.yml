@@ -20,7 +20,6 @@ jobs:
       # --- Escaneo en PR ---
       #
       - name: SonarQube Scan (Pull Request)
-        if: ${{ github.event_name == 'pull_request' }}
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
